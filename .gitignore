@@ -177,3 +177,5 @@ localTests.js
 .env
 # Finder (MacOS) folder config
 .DS_Store
+
+config.json
