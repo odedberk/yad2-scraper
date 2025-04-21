@@ -14,6 +14,10 @@ interface Project {
 
 interface Config {
   telegramApiToken: string | null;
+  users: Record<string, User>; // Users is an object with string keys and User values
+}
+
+interface User {
   chatId: string | null;
   projects: Project[];
 }
@@ -22,23 +26,43 @@ const userAgents = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36",
   "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 ];
 
-// Utility functions
-// Function to fetch HTML response from Yad2 with retry mechanism, backoff strategy, and maximum timeout
-const getYad2Response = async (url: string, retries = 3, maxTimeout = 10000): Promise<string> => {
-  console.log(`Fetching URL: ${url}, Retries left: ${retries}`);
-  const requestOptions = {
+
+function getRequestOptions (){
+  var agentIndex = Math.floor(Math.random() * userAgents.length);
+  var userAgent = userAgents[agentIndex];
+  return {
     method: "GET",
     redirect: "follow" as RequestRedirect,
     headers: {
-      "User-Agent": userAgents[Math.floor(Math.random() * userAgents.length)],
-      "Accept-Language": "en-US,en;q=0.9",
+      "User-Agent": userAgent,
       Referer: "https://www.yad2.co.il/",
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9,he;q=0.8",
+      "Cache-Control": "max-age=0",
+      "Connection": "keep-alive",
+      "DNT": "1",
+      "Sec-Fetch-Dest": 'document',
+      "Sec-Fetch-Mode": 'navigate',      
     },
-  };
+    cookies: {
+      '__ssds': '3',
+      'y2018-2-cohort': '88',
+      'use_elastic_search': '1',
+      'abTestKey': '2',
+      'cohortGroup': 'D'
+    }
+  }
+};
 
+// Utility functions
+// Function to fetch HTML response from Yad2 with retry mechanism, backoff strategy, and maximum timeout
+const getYad2Response = async (url: string, retries = 4, maxTimeout = 10000): Promise<string> => {
+  // console.log(`Fetching URL: ${url}, Retries left: ${retries}`);
+  
   const backoffDelay = (attempt: number) => Math.pow(2, attempt) * 1000; // Exponential backoff in milliseconds
   const startTime = Date.now();
 
@@ -49,20 +73,30 @@ const getYad2Response = async (url: string, retries = 3, maxTimeout = 10000): Pr
         console.error("Maximum timeout reached, aborting retries");
         throw new Error("Maximum timeout reached while trying to fetch URL");
       }
-
+      const requestOptions = getRequestOptions();
       const res = await fetch(url, requestOptions);
       if (!res.ok) {
         console.error(`Fetch failed with status: ${res.status} ${res.statusText}`);
         throw new Error(`Failed to fetch Yad2: ${res.status} ${res.statusText}`);
       }
-      console.log(`Successfully fetched URL: ${url}`);
-      return await res.text();
+      // console.log(`Successfully fetched URL: ${url}`);
+
+      var htmlRes = await res.text();
+      const $ = cheerio.load(htmlRes);
+
+      const titleText = $("title").first().text();
+      console.log(`Page title: ${titleText}`);
+      if (titleText === "ShieldSquare Captcha") {
+        const errorMsg = `Bot detection encountered, agent used: ${requestOptions.headers["User-Agent"]}`
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      return htmlRes;
     } catch (err) {
-      console.error("Error fetching Yad2 response", err);
       retries -= 1;
       if (retries === 0) {
-        console.error("Network error occurred after multiple retries");
-        throw new Error("Network error occurred after multiple retries");
+        throw new Error(''+err);
       }
       const delay = backoffDelay(3 - retries);
       console.log(`Retrying... (${3 - retries} attempts left, waiting for ${delay}ms)`);
@@ -78,13 +112,6 @@ const scrapeItemsAndExtractAdDetails = async (url: string): Promise<any[]> => {
   const yad2Html = await getYad2Response(url);
   const $ = cheerio.load(yad2Html);
 
-  const titleText = $("title").first().text();
-  console.log(`Page title: ${titleText}`);
-  if (titleText === "ShieldSquare Captcha") {
-    console.error("Bot detection encountered, stopping scrape");
-    throw new Error("Bot detection encountered, could not proceed");
-  }
-
   // Define possible selectors for feed items to make the scraper resilient to HTML changes
   const possibleSelectors = ["[data-testid='item-basic']"];
   let $feedItems;
@@ -93,7 +120,7 @@ const scrapeItemsAndExtractAdDetails = async (url: string): Promise<any[]> => {
   for (const selector of possibleSelectors) {
     $feedItems = $(selector);
     if ($feedItems.length) {
-      console.log(`Feed items found using selector: ${selector}`);
+      // console.log(`Feed items found using selector: ${selector}`);
       break;
     }
   }
@@ -106,11 +133,12 @@ const scrapeItemsAndExtractAdDetails = async (url: string): Promise<any[]> => {
   // Extract ad details dynamically, accounting for different potential structures
   const adDetails: Record<string, string>[] = [];
   $feedItems.each((_, elm) => {
+    // console.log(elm);
     const imageUrl = $(elm).find("img[data-testid='image']").attr("src");
     const address = $(elm).find("[class^=item-data-content_heading]").eq(1).text().trim();
     const description = $(elm).find("[class^='item-data-content_itemInfoLine']").first().text().trim();
     const structure = $(elm).find("[class^=item-data-content_itemInfoLine]").eq(1).text().trim();
-    const price = $(elm).find("[class^=price_price]").text().trim();
+    const price = $(elm).find("span[data-testid='price']").text().trim();
     const relativeLink = $(elm).find('a[class^="item-layout_itemLink"]').attr("href");
 
     let fullLink = "";
@@ -238,10 +266,10 @@ const sendTelegramPhotoMessage = async (
 };
 
 // Function to perform scraping and send Telegram notifications
-const scrape = async (topic: string, url: string): Promise<void> => {
+const scrape = async (topic: string, url: string, configData: Config, user : string): Promise<void> => {
   console.log(`Starting scrape for topic: ${topic}`);
   const apiToken = process.env.API_TOKEN || config.telegramApiToken;
-  const chatId = process.env.CHAT_ID || config.chatId;
+  const chatId = process.env.CHAT_ID || configData.users[user].chatId;
   if (!apiToken || !chatId) {
     console.error("Missing API_TOKEN or CHAT_ID");
     throw new Error("Missing API_TOKEN or CHAT_ID");
@@ -250,9 +278,11 @@ const scrape = async (topic: string, url: string): Promise<void> => {
   try {
     console.log(`Sent start message for topic: ${topic}`);
     const scrapeResults = await scrapeItemsAndExtractAdDetails(url);
+    // console.log("Results:", scrapeResults);
     const newItems = await checkForNewItems(scrapeResults, topic);
     if (newItems.length > 0) {
       for (const item of newItems) {
+        debugger;
         const msg = `${item.address}\n${item.description}\n${item.structure}\n${item.price}\n\n${item.fullLink}`;
         if (item.imageUrl) {
           await sendTelegramPhotoMessage(chatId, item.imageUrl, msg, apiToken);
@@ -266,40 +296,51 @@ const scrape = async (topic: string, url: string): Promise<void> => {
     }
   } catch (e: any) {
     const errMsg = e?.message || "Unknown error occurred";
-    await sendTelegramMessage(chatId, `Scan workflow failed... 😥\nError: ${errMsg}`, apiToken);
+    await sendTelegramMessage(chatId, `Scan workflow failed for ${topic}... 😥`, apiToken);
     console.error("Error during scraping", e);
   }
 };
 
 // Main function to iterate through all projects and perform scraping
-const main = async (): Promise<void> => {
+const main = async (user: string, topic: string): Promise<void> => {
   console.log("Starting main scraping process");
   const configData: Config = config;
   const limit = pLimit(3);
 
-  const scrapePromises = configData.projects
-    .filter((project) => {
-      if (project.disabled) {
-        console.log(`Topic "${project.topic}" is disabled. Skipping.`);
-        return false;
-      }
-      console.log(`Adding topic "${project.topic}" to scraping queue`);
-      return true;
-    })
-    .map((project) =>
-      limit(() =>
-        scrape(project.topic, project.url).catch((e) => {
-          console.error(`Error scraping topic: ${project.topic}`, e);
-        })
-      )
-    );
+  const usersToScrape = user ? [user] : Object.keys(configData.users);
 
-  await Promise.all(scrapePromises);
+  for (const currentUser of usersToScrape) {
+    console.log(`Scraping for user: ${currentUser}, topic: ${topic}`);
+    
+    const scrapePromises = configData.users[currentUser].projects
+      .filter((project) => {
+        if (project.disabled) {
+          console.log(`Topic "${project.topic}" is disabled. Skipping.`);
+          return false;
+        }
+        if (topic && project.topic !== topic) {
+          console.log(`Topic "${project.topic}" does not match the specified topic "${topic}". Skipping.`);
+          return false;
+        }
+        console.log(`Adding topic "${project.topic}" to scraping queue`);
+        return true;
+      })
+      .map((project) =>
+        limit(() =>
+          scrape(project.topic, project.url, configData, currentUser).catch((e) => {
+            console.error(`Error scraping topic: ${project.topic}`, e);
+          })
+        )
+      );
+
+    await Promise.all(scrapePromises);
+  }
+
   console.log("Completed all scraping tasks");
 };
 
 // Execute the main program
-main().catch((e) => {
+main('', '').catch((e) => {
   console.error("Unhandled error in the program", e);
   process.exit(1);
 });
