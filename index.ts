@@ -2,8 +2,16 @@ import * as cheerio from "cheerio";
 import fs from "fs";
 import { writeFile, mkdir, readFile } from "fs/promises";
 import fetch from "node-fetch";
-import config from "./config.json";
 import pLimit from "p-limit";
+
+
+let config: Config;
+try {
+  config = require("./config.json");
+  console.log("Config loaded successfully");
+} catch (error) {
+  console.log("Error: config.json file not found or invalid. Please ensure it exists and is properly formatted.");
+}
 
 // Interfaces for project configuration
 interface Project {
