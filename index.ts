@@ -266,10 +266,10 @@ const sendTelegramPhotoMessage = async (
 };
 
 // Function to perform scraping and send Telegram notifications
-const scrape = async (topic: string, url: string, configData: Config, user : string): Promise<void> => {
+const scrape = async (topic: string, url: string, user : User): Promise<void> => {
   console.log(`Starting scrape for topic: ${topic}`);
   const apiToken = process.env.API_TOKEN || config.telegramApiToken;
-  const chatId = process.env.CHAT_ID || configData.users[user].chatId;
+  const chatId = user.chatId;
   if (!apiToken || !chatId) {
     console.error("Missing API_TOKEN or CHAT_ID");
     throw new Error("Missing API_TOKEN or CHAT_ID");
@@ -297,17 +297,24 @@ const scrape = async (topic: string, url: string, configData: Config, user : str
 };
 
 // Main function to iterate through all projects and perform scraping
-const main = async (user: string, topic: string): Promise<void> => {
+const main = async (userToScrape: string, topic: string): Promise<void> => {
   console.log("Starting main scraping process");
   const configData: Config = config;
   const limit = pLimit(3);
 
-  const usersToScrape = user ? [user] : Object.keys(configData.users);
+  const users = process.env.USERS ? JSON.parse(process.env.USERS) as Record<string, User> 
+                                  : configData.users;
+  if (!users) {
+    console.error("No users found in configuration");
+    return;
+  }
 
-  for (const currentUser of usersToScrape) {
+  const userNames = userToScrape ? [userToScrape] : Object.keys(users);
+
+  for (const currentUser of userNames) {
     console.log(`Scraping for user: ${currentUser}, topic: ${topic}`);
     
-    const scrapePromises = configData.users[currentUser].projects
+    const scrapePromises = users[currentUser].projects
       .filter((project) => {
         if (project.disabled) {
           console.log(`Topic "${project.topic}" is disabled. Skipping.`);
@@ -322,7 +329,7 @@ const main = async (user: string, topic: string): Promise<void> => {
       })
       .map((project) =>
         limit(() =>
-          scrape(project.topic, project.url, configData, currentUser).catch((e) => {
+          scrape(project.topic, project.url, users[currentUser]).catch((e) => {
             console.error(`Error scraping topic: ${project.topic}`, e);
           })
         )

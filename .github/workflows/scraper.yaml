@@ -1,0 +1,41 @@
+name: Yad2 Scraper
+
+on:
+  schedule:
+    - cron: '*/15 5-17 * * *'
+  workflow_dispatch:
+    branches:
+      - '**'
+
+jobs:
+  scraper:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install packages
+        run: bun install
+
+      - name: Setup git config
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "${{ secrets.GIT_CONFIG_EMAIL }}"
+
+      - name: Run scraper
+        run: |
+          export API_TOKEN=${{ secrets.TELEGRAMAPITOKEN }}
+          export USERS=${{ vars.USERS }}
+          bun run index.ts
+
+      - name: Push new json data if needed
+        run: |
+          if [ -f ./push_me ]; then
+            echo Pushing to Github...
+            git add .
+            DATE=$(date +"%F, %H:%M:%S")
+            git commit -m "updated data - $DATE"
+            git push
+          fi
