@@ -4,11 +4,12 @@ import { writeFile, mkdir, readFile } from "fs/promises";
 import fetch from "node-fetch";
 import pLimit from "p-limit";
 
-
+var apiToken : string | null = "";
 let config: Config;
 try {
   config = require("./config.json");
   console.log("Config loaded successfully");
+  apiToken = process.env.API_TOKEN || config.telegramApiToken
 } catch (error) {
   console.log("config.json file not found or invalid. Will try to use environment variables instead.");
 }
@@ -216,7 +217,7 @@ const createPushFlagForWorkflow = async (): Promise<void> => {
 };
 
 // Function to send a message via Telegram API
-const sendTelegramMessage = async (chatId: string, text: string, apiToken: string): Promise<void> => {
+const sendTelegramMessage = async (chatId: string, text: string): Promise<void> => {
   const url = `https://api.telegram.org/bot${apiToken}/sendMessage`;
   const payload = {
     chat_id: chatId,
@@ -245,8 +246,7 @@ const sendTelegramMessage = async (chatId: string, text: string, apiToken: strin
 const sendTelegramPhotoMessage = async (
   chatId: string,
   photoUrl: string,
-  caption: string,
-  apiToken: string
+  caption: string
 ): Promise<void> => {
   const url = `https://api.telegram.org/bot${apiToken}/sendPhoto`;
   const payload = {
@@ -276,7 +276,6 @@ const sendTelegramPhotoMessage = async (
 // Function to perform scraping and send Telegram notifications
 const scrape = async (topic: string, url: string, user : User): Promise<void> => {
   console.log(`Starting scrape for topic: ${topic}`);
-  const apiToken = process.env.API_TOKEN || config.telegramApiToken;
   const chatId = user.chatId;
   if (!apiToken || !chatId) {
     console.error("Missing API_TOKEN or CHAT_ID");
@@ -286,20 +285,20 @@ const scrape = async (topic: string, url: string, user : User): Promise<void> =>
   try {
     console.log(`Sent start message for topic: ${topic}`);
     const scrapeResults = await scrapeItemsAndExtractAdDetails(url);
-    // console.log("Results:", scrapeResults);
     const newItems = await checkForNewItems(scrapeResults, topic);
+
     for (const item of newItems) {
       const msg = `${item.address}\n${item.description}\n${item.structure}\n${item.price}\n\n${item.fullLink}`;
       if (item.imageUrl) {
-        await sendTelegramPhotoMessage(chatId, item.imageUrl, msg, apiToken);
+        await sendTelegramPhotoMessage(chatId, item.imageUrl, msg);
       } else {
-        await sendTelegramMessage(chatId, msg, apiToken);
+        await sendTelegramMessage(chatId, msg);
       }
       console.log(`Sent new item to chatId: ${chatId}`);
     }    
   } catch (e: any) {
     const errMsg = e?.message || "Unknown error occurred";
-    await sendTelegramMessage(chatId, `Scan workflow failed for ${topic}... 😥`, apiToken);
+    await sendTelegramMessage(chatId, `Scan workflow failed for ${topic}... 😥`);
     console.error("Error during scraping", e);
   }
 };
@@ -319,10 +318,10 @@ const main = async (userToScrape: string, topic: string): Promise<void> => {
 
   const userNames = userToScrape ? [userToScrape] : Object.keys(users);
 
-  for (const currentUser of userNames) {
-    console.log(`Scraping for user: ${currentUser}, topic: ${topic}`);
-    
-    const scrapePromises = users[currentUser].projects
+  for (const currentUserName of userNames) {
+    console.log(`Scraping for user: ${currentUserName}, topic: ${topic}`);
+
+    const scrapePromises = users[currentUserName].projects
       .filter((project) => {
         if (project.disabled) {
           console.log(`Topic "${project.topic}" is disabled. Skipping.`);
@@ -337,7 +336,7 @@ const main = async (userToScrape: string, topic: string): Promise<void> => {
       })
       .map((project) =>
         limit(() =>
-          scrape(project.topic, project.url, users[currentUser]).catch((e) => {
+          scrape(project.topic, project.url, users[currentUserName]).catch((e) => {
             console.error(`Error scraping topic: ${project.topic}`, e);
           })
         )
