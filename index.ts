@@ -172,9 +172,9 @@ const scrapeItemsAndExtractAdDetails = async (url: string): Promise<any[]> => {
 };
 
 // Function to check for new items and update saved items list
-const checkForNewItems = async (ads: any[], topic: string): Promise<any[]> => {
+const checkForNewItems = async (ads: any[], topic: string, user: User): Promise<any[]> => {
   console.log(`Checking for new items for topic: ${topic}`);
-  const filePath = `./data/${topic}.json`;
+  const filePath = `./data/${user.chatId}_${topic}.json`;
   let savedAds = new Set<string>();
 
   try {
@@ -286,7 +286,7 @@ const scrape = async (topic: string, url: string, user : User): Promise<void> =>
   try {
     console.log(`Sent start message for topic: ${topic}`);
     const scrapeResults = await scrapeItemsAndExtractAdDetails(url);
-    const newItems = await checkForNewItems(scrapeResults, topic);
+    const newItems = await checkForNewItems(scrapeResults, topic, user);
 
     for (const item of newItems) {
       const msg = `${item.address}\n${item.description}\n${item.structure}\n${item.price}\n\n${item.fullLink}`;
