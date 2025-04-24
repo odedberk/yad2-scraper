@@ -5,14 +5,15 @@ import fetch from "node-fetch";
 import pLimit from "p-limit";
 
 var apiToken : string | null = "";
-let config: Config;
+let config: Config | undefined;
 try {
   config = require("./config.json");
   console.log("Config loaded successfully");
-  apiToken = process.env.API_TOKEN || config.telegramApiToken
 } catch (error) {
   console.log("config.json file not found or invalid. Will try to use environment variables instead.");
 }
+
+apiToken = process.env.API_TOKEN || config?.telegramApiToken || null;
 
 // Interfaces for project configuration
 interface Project {
