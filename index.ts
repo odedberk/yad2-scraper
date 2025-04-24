@@ -10,7 +10,7 @@ try {
   config = require("./config.json");
   console.log("Config loaded successfully");
 } catch (error) {
-  console.log("Error: config.json file not found or invalid. Please ensure it exists and is properly formatted.");
+  console.log("config.json file not found or invalid. Will try to use environment variables instead.");
 }
 
 // Interfaces for project configuration
