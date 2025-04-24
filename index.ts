@@ -308,7 +308,6 @@ const main = async (userToScrape: string, topic: string): Promise<void> => {
   console.log("Starting main scraping process");
   const configData: Config = config;
   const limit = pLimit(3);
-  console.log(process.env);
   const users = process.env.USERS ? JSON.parse(process.env.USERS) as Record<string, User> 
                                   : configData.users;
   if (!users) {
