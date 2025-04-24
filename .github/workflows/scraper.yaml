@@ -8,7 +8,7 @@ on:
       - '**'
 
 jobs:
-  environment: env
+  environment: "env"
   scraper:
     runs-on: ubuntu-latest
     permissions:
