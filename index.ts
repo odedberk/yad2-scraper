@@ -60,13 +60,13 @@ function getRequestOptions (){
 
 // Utility functions
 // Function to fetch HTML response from Yad2 with retry mechanism, backoff strategy, and maximum timeout
-const getYad2Response = async (url: string, retries = 4, maxTimeout = 10000): Promise<string> => {
+const getYad2Response = async (url: string, retriesLeft = 4, maxTimeout = 60000): Promise<string> => {
   // console.log(`Fetching URL: ${url}, Retries left: ${retries}`);
-  
+  const maxRetries = retriesLeft;
   const backoffDelay = (attempt: number) => Math.pow(2, attempt) * 1000; // Exponential backoff in milliseconds
   const startTime = Date.now();
 
-  while (retries > 0) {
+  while (retriesLeft > 0) {
     try {
       // Check if maximum timeout is reached
       if (Date.now() - startTime > maxTimeout) {
@@ -94,12 +94,12 @@ const getYad2Response = async (url: string, retries = 4, maxTimeout = 10000): Pr
 
       return htmlRes;
     } catch (err) {
-      retries -= 1;
-      if (retries === 0) {
+      retriesLeft -= 1;
+      if (retriesLeft === 0) {
         throw new Error(''+err);
       }
-      const delay = backoffDelay(3 - retries);
-      console.log(`Retrying... (${3 - retries} attempts left, waiting for ${delay}ms)`);
+      const delay = backoffDelay(maxRetries - retriesLeft);
+      console.log(`Retrying... (${retriesLeft} attempts left, waiting for ${delay}ms)`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -280,20 +280,15 @@ const scrape = async (topic: string, url: string, configData: Config, user : str
     const scrapeResults = await scrapeItemsAndExtractAdDetails(url);
     // console.log("Results:", scrapeResults);
     const newItems = await checkForNewItems(scrapeResults, topic);
-    if (newItems.length > 0) {
-      for (const item of newItems) {
-        debugger;
-        const msg = `${item.address}\n${item.description}\n${item.structure}\n${item.price}\n\n${item.fullLink}`;
-        if (item.imageUrl) {
-          await sendTelegramPhotoMessage(chatId, item.imageUrl, msg, apiToken);
-        } else {
-          await sendTelegramMessage(chatId, msg, apiToken);
-        }
-        console.log(`Sent new item to chatId: ${chatId}`);
+    for (const item of newItems) {
+      const msg = `${item.address}\n${item.description}\n${item.structure}\n${item.price}\n\n${item.fullLink}`;
+      if (item.imageUrl) {
+        await sendTelegramPhotoMessage(chatId, item.imageUrl, msg, apiToken);
+      } else {
+        await sendTelegramMessage(chatId, msg, apiToken);
       }
-    } else {
-      console.log(`No new items found for topic: ${topic}`);
-    }
+      console.log(`Sent new item to chatId: ${chatId}`);
+    }    
   } catch (e: any) {
     const errMsg = e?.message || "Unknown error occurred";
     await sendTelegramMessage(chatId, `Scan workflow failed for ${topic}... 😥`, apiToken);
