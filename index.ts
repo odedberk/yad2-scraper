@@ -299,7 +299,7 @@ const scrape = async (topic: string, url: string, user : User): Promise<void> =>
     }    
   } catch (e: any) {
     const errMsg = e?.message || "Unknown error occurred";
-    await sendTelegramMessage(chatId, `Scan workflow failed for ${topic}... 😥`);
+    // await sendTelegramMessage(chatId, `Scan workflow failed for ${topic}... 😥`);
     console.error("Error during scraping", e);
   }
 };
